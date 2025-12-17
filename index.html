@@ -12,6 +12,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Merriweather:ital,wght@0,300;0,400;0,700;1,300&display=swap" rel="stylesheet">
     <script>
       tailwind.config = {
+        darkMode: 'class',
         theme: {
           extend: {
             fontFamily: {
@@ -21,6 +22,17 @@
             colors: {
               bible: {
                 50: '#fdfbf7', // Beige
+                900: '#1c1917', // Dark Stone
+              },
+              night: {
+                950: '#0c0a09', // Deepest Background (Warm Black)
+                900: '#151412', // Surface Background
+                800: '#1f1d1b', // Card/Input Background
+                700: '#2e2b28', // Borders
+                600: '#4a4642', // Muted Elements
+                400: '#a8a29e', // Secondary Text
+                200: '#d6d3d1', // Body Text (Low Contrast)
+                100: '#e7e5e4', // Heading Text (Not Pure White)
               },
               royal: {
                 50: '#eff6ff',
@@ -66,7 +78,7 @@
 }
 </script>
 </head>
-  <body class="bg-bible-50 text-royal-neutral h-screen overflow-hidden font-sans antialiased">
+  <body class="bg-bible-50 text-royal-neutral h-screen overflow-hidden font-sans antialiased transition-colors duration-300 dark:bg-night-950 dark:text-night-200">
     <div id="root" class="h-full"></div>
   </body>
 </html>

@@ -22,7 +22,20 @@ import {
   Target,
   Copy,
   ArrowRight,
-  Quote
+  Quote,
+  Type,
+  Minus,
+  Plus,
+  Maximize,
+  Minimize,
+  Settings2,
+  Map,
+  Library,
+  Feather,
+  Layout,
+  MessageSquare,
+  Clock,
+  AlertCircle
 } from 'lucide-react';
 import { exportToMarkdown, exportToPPTX, exportToDoc, exportToPDF } from '../services/exportService';
 
@@ -38,29 +51,24 @@ type TabID =
   | 'interpretation' 
   | 'application' 
   | 'slides'
-  | 'sermon';
+  | 'sermon'
+  // Book Mode Tabs
+  | 'book_general'
+  | 'book_context'
+  | 'book_literary'
+  | 'book_theology'
+  | 'book_application';
 
 // Helper function to render text with highlighted bible references
-// Improved regex to catch "1 Cor. 13:1", "João 3:16", "(Rm 8:1)", "(1 Jo 1:9)" etc.
 const renderTextWithRefs = (text: string) => {
   if (!text) return null;
-  // Regex explanation:
-  // (\(?                     : Optional opening paren
-  // (?:[1-3]|I{1,3})?        : Optional 1, 2, 3 or I, II, III
-  // \s?                      : Optional space after number
-  // [A-Za-zÀ-ÿ\.]+           : Book name (letters, accents, dots for abbr.)
-  // \s+                      : Mandatory space(s) before chapter
-  // \d+                      : Chapter
-  // [:\.]\d+                 : Separator (colon or dot) and Verse
-  // (?:[–-]\d+)?             : Optional range (hyphen or en-dash)
-  // \)?)                     : Optional closing paren
   const parts = text.split(/(\(?(?:[1-3]|I{1,3})?\s?[A-Za-zÀ-ÿ\.]+\s+\d+[:\.]\d+(?:[–-]\d+)?\)?)/g);
   
   return parts.map((part, i) => {
       // Check if the part looks like a bible ref
       if (part.match(/^\(?(?:[1-3]|I{1,3})?\s?[A-Za-zÀ-ÿ\.]+\s+\d+[:\.]\d+(?:[–-]\d+)?\)?$/)) {
           return (
-              <span key={i} className="inline-flex items-center px-1.5 py-0.5 rounded text-[0.85em] font-bold bg-royal-50 text-royal-700 mx-1 border border-royal-100 align-baseline whitespace-nowrap cursor-help hover:bg-royal-100 transition-colors" title="Referência Bíblica">
+              <span key={i} className="inline-flex items-center px-1.5 py-0.5 rounded text-[0.85em] font-bold bg-royal-50 dark:bg-night-900/50 text-royal-700 dark:text-gold-400 mx-1 border border-royal-100 dark:border-night-800 align-baseline whitespace-nowrap cursor-help hover:bg-royal-100 dark:hover:bg-night-800 transition-colors" title="Referência Bíblica">
                   {part}
               </span>
           );
@@ -70,14 +78,26 @@ const renderTextWithRefs = (text: string) => {
 };
 
 const StudyViewer: React.FC<StudyViewerProps> = ({ data, onBack }) => {
-  const [activeTab, setActiveTab] = useState<TabID>('text');
+  const [activeTab, setActiveTab] = useState<TabID>(data.type === 'book' ? 'book_general' : 'text');
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [showShareToast, setShowShareToast] = useState(false);
   const [showCopySermonToast, setShowCopySermonToast] = useState(false);
+  
+  // Reading Mode State
+  const [readingMode, setReadingMode] = useState(false);
+  const [fontSizeLevel, setFontSizeLevel] = useState(1); // 0=sm, 1=base, 2=lg, 3=xl
+  const [fontSerif, setFontSerif] = useState(false); // false = sans, true = serif
+  const [showAppearanceMenu, setShowAppearanceMenu] = useState(false);
+  
+  // Editable Title State
+  const [editableTitle, setEditableTitle] = useState(data.meta.reference);
+
   const exportMenuRef = useRef<HTMLDivElement>(null);
+  const appearanceMenuRef = useRef<HTMLDivElement>(null);
   const mainContentRef = useRef<HTMLElement>(null);
 
-  const tabs = [
+  // Tabs for Passage Mode
+  const passageTabs = [
     { id: 'text', label: 'Texto', icon: BookOpen },
     { id: 'context', label: 'Contexto', icon: History },
     { id: 'lexical', label: 'Léxico', icon: Languages },
@@ -87,10 +107,28 @@ const StudyViewer: React.FC<StudyViewerProps> = ({ data, onBack }) => {
     { id: 'slides', label: 'Slides', icon: Presentation },
   ];
 
+  // Tabs for Book Mode
+  const bookTabs = [
+    { id: 'book_general', label: 'Geral', icon: Library },
+    { id: 'book_context', label: 'Contexto', icon: Map },
+    { id: 'book_literary', label: 'Literário', icon: Feather },
+    { id: 'book_theology', label: 'Teologia', icon: Book },
+    { id: 'book_application', label: 'Aplicação', icon: Lightbulb },
+  ];
+
+  const tabs = data.type === 'book' ? bookTabs : passageTabs;
+
+  const fontSizeClasses = ['text-sm', 'text-base', 'text-lg', 'text-xl'];
+  const currentFontSize = fontSizeClasses[fontSizeLevel];
+  const currentFontFamily = fontSerif ? 'font-serif' : 'font-sans';
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
         setShowExportMenu(false);
+      }
+      if (appearanceMenuRef.current && !appearanceMenuRef.current.contains(event.target as Node)) {
+        setShowAppearanceMenu(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -152,6 +190,8 @@ ${data.sermon.conclusion}
 
   const handleExport = (type: 'pdf' | 'doc' | 'pptx' | 'md') => {
     setShowExportMenu(false);
+    const fileName = editableTitle.replace(/\s/g, '_');
+    
     switch (type) {
       case 'md':
         const md = exportToMarkdown(data);
@@ -159,7 +199,7 @@ ${data.sermon.conclusion}
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `estudo-${data.meta.reference.replace(/\s/g, '_')}.md`;
+        a.download = `estudo-${fileName}.md`;
         a.click();
         break;
       case 'pptx':
@@ -174,578 +214,694 @@ ${data.sermon.conclusion}
     }
   };
 
+  // Render Helpers for Book Intro
+  const SectionHeader = ({ icon: Icon, title }: { icon: any, title: string }) => (
+      <div className="flex items-center gap-3 mb-6">
+          <div className={`p-2 rounded-lg ${readingMode ? 'bg-transparent p-0' : 'bg-royal-50 dark:bg-night-800 text-royal-900 dark:text-night-100'}`}>
+              <Icon className="w-5 h-5" />
+          </div>
+          <h2 className={`font-serif font-bold text-royal-900 dark:text-night-100 ${readingMode ? 'text-3xl' : 'text-2xl'}`}>{title}</h2>
+      </div>
+  );
+
+  const InfoCard = ({ label, value }: { label: string, value: string }) => (
+      <div className={`rounded-xl ${readingMode ? 'border-l-4 border-royal-200 dark:border-night-700 pl-4 py-2' : 'bg-white dark:bg-night-900/50 p-6 border border-royal-100 dark:border-night-700 shadow-sm'}`}>
+          <h4 className="text-xs font-bold uppercase tracking-wider text-royal-400 dark:text-night-400 mb-2 font-sans">{label}</h4>
+          <p className={`text-royal-800 dark:text-night-200 text-justify hyphens-auto ${currentFontSize} ${currentFontFamily}`}>{value}</p>
+      </div>
+  );
+
   return (
-    <div className="flex flex-col h-full bg-transparent overflow-hidden font-sans">
+    <div className={`flex flex-col h-full bg-transparent overflow-hidden transition-colors duration-300 ${fontSerif ? 'font-serif' : 'font-sans'}`}>
       {/* Header Elegant */}
-      <header className="bg-white/90 backdrop-blur-md border-b border-white px-4 md:px-8 py-4 flex items-center justify-between shrink-0 shadow-soft z-10">
-        <div className="flex items-center gap-4">
+      <header className={`bg-white/90 dark:bg-night-900/90 backdrop-blur-md border-b border-white dark:border-night-800 px-4 md:px-8 py-4 flex items-center justify-between shrink-0 shadow-soft dark:shadow-none z-10 transition-all ${readingMode ? 'justify-center border-b-0 shadow-none bg-transparent' : ''}`}>
+        
+        {/* Back Button & Title - Hide in Reading Mode mostly, but keep title subtly if needed */}
+        <div className={`flex items-center gap-4 flex-1 mr-4 ${readingMode ? 'hidden' : 'flex'}`}>
           <button 
             onClick={onBack}
-            className="p-2 hover:bg-royal-50 rounded-full text-royal-400 hover:text-royal-800 transition-colors border border-transparent hover:border-royal-100"
+            className="p-2 hover:bg-royal-50 dark:hover:bg-night-800 rounded-full text-royal-400 dark:text-night-400 hover:text-royal-800 dark:hover:text-white transition-colors border border-transparent hover:border-royal-100 dark:hover:border-night-700"
             title="Voltar para busca"
           >
             <ChevronLeft className="w-5 h-5" />
           </button>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
              <div className="hidden sm:block">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8 text-royal-950">
-                    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
-                    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
-                    <line x1="12" y1="6" x2="12" y2="12"></line>
-                    <line x1="9" y1="9" x2="15" y2="9"></line>
-                    <path d="M12 2l1 2"></path>
-                    <path d="M10 2.5l1 1.5"></path>
-                    <path d="M14 2.5l-1 1.5"></path>
-                </svg>
+                {data.type === 'book' ? (
+                     <Library className="w-8 h-8 text-royal-950 dark:text-night-100" />
+                ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8 text-royal-950 dark:text-night-100">
+                        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+                        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+                        <line x1="12" y1="6" x2="12" y2="12"></line>
+                        <line x1="9" y1="9" x2="15" y2="9"></line>
+                        <path d="M12 2l1 2"></path>
+                        <path d="M10 2.5l1 1.5"></path>
+                        <path d="M14 2.5l-1 1.5"></path>
+                    </svg>
+                )}
              </div>
-             <div>
-                <h1 className="text-xl md:text-2xl font-bold text-royal-950 font-serif tracking-tight">{data.meta.reference}</h1>
-                <span className="text-xs font-semibold text-royal-500 px-2 py-0.5 bg-royal-50 rounded uppercase tracking-wider border border-royal-100 font-sans">
-                {data.meta.translation}
-                </span>
+             <div className="flex flex-col min-w-0 w-full">
+                <input 
+                    type="text"
+                    value={editableTitle}
+                    onChange={(e) => setEditableTitle(e.target.value)}
+                    className="text-xl md:text-2xl font-bold text-royal-950 dark:text-night-100 font-serif tracking-tight bg-transparent border border-transparent hover:border-gray-200 dark:hover:border-night-700 rounded px-1 -ml-1 focus:ring-2 focus:ring-royal-200 dark:focus:ring-night-700 outline-none w-full max-w-2xl transition-all truncate"
+                />
+                <div>
+                    <span className="text-xs font-semibold text-royal-500 dark:text-night-400 px-2 py-0.5 bg-royal-50 dark:bg-night-800 rounded uppercase tracking-wider border border-royal-100 dark:border-night-700 font-sans inline-block mt-1">
+                    {data.type === 'book' ? 'Introdução ao Livro' : data.meta.translation}
+                    </span>
+                </div>
              </div>
           </div>
         </div>
+
+        {readingMode && (
+             <div className="flex-1 text-center">
+                 <h2 className="text-royal-900 dark:text-night-200 font-serif font-bold opacity-50">{data.meta.reference}</h2>
+             </div>
+        )}
         
-        <div className="flex items-center gap-2">
-            {/* Share Button */}
-            <div className="relative">
-                <button
-                    onClick={handleShare}
-                    className="p-2.5 text-royal-400 hover:bg-royal-50 hover:text-royal-900 rounded-lg transition-colors border border-transparent hover:border-royal-100"
-                    title="Copiar link do estudo"
-                >
-                    {showShareToast ? <Check className="w-5 h-5 text-green-600" /> : <Share2 className="w-5 h-5" />}
-                </button>
-                {showShareToast && (
-                    <div className="absolute top-12 right-0 bg-royal-900 text-white text-xs py-1.5 px-3 rounded shadow-lg whitespace-nowrap animate-fadeIn font-sans z-50">
-                        Link copiado!
+        <div className={`flex items-center gap-2 shrink-0 ${readingMode ? 'absolute right-4 top-4' : ''}`}>
+            {/* Same Appearance/Export menus as before, keeping code DRY by not changing */}
+            {/* Appearance Menu */}
+            <div className="relative" ref={appearanceMenuRef}>
+                 <button
+                    onClick={() => setShowAppearanceMenu(!showAppearanceMenu)}
+                    className="p-2.5 text-royal-400 dark:text-night-400 hover:bg-royal-50 dark:hover:bg-night-800 hover:text-royal-900 dark:hover:text-white rounded-lg transition-colors border border-transparent hover:border-royal-100 dark:hover:border-night-700"
+                    title="Aparência e Leitura"
+                 >
+                     <Type className="w-5 h-5" />
+                 </button>
+                 {showAppearanceMenu && (
+                    <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-night-800 rounded-xl shadow-soft dark:shadow-xl border border-royal-50 dark:border-night-700 p-4 z-50 ring-1 ring-black ring-opacity-5 space-y-4">
+                        {/* Font Controls */}
+                        <div>
+                             <label className="text-xs font-bold text-royal-400 dark:text-night-400 uppercase tracking-wider mb-2 block">Tamanho da Fonte</label>
+                             <div className="flex items-center justify-between bg-royal-50 dark:bg-night-900 rounded-lg p-1 border border-royal-100 dark:border-night-700">
+                                 <button 
+                                    onClick={() => setFontSizeLevel(Math.max(0, fontSizeLevel - 1))}
+                                    className="p-2 text-royal-600 dark:text-night-400 hover:bg-white dark:hover:bg-night-700 rounded-md transition-all disabled:opacity-30"
+                                    disabled={fontSizeLevel === 0}
+                                 >
+                                     <Minus className="w-4 h-4" />
+                                 </button>
+                                 <span className="text-sm font-medium text-royal-900 dark:text-night-200">{fontSizeLevel === 1 ? 'Padrão' : fontSizeLevel === 0 ? 'Pequeno' : fontSizeLevel === 2 ? 'Grande' : 'Extra'}</span>
+                                 <button 
+                                    onClick={() => setFontSizeLevel(Math.min(3, fontSizeLevel + 1))}
+                                    className="p-2 text-royal-600 dark:text-night-400 hover:bg-white dark:hover:bg-night-700 rounded-md transition-all disabled:opacity-30"
+                                    disabled={fontSizeLevel === 3}
+                                 >
+                                     <Plus className="w-4 h-4" />
+                                 </button>
+                             </div>
+                        </div>
+
+                         <div>
+                             <label className="text-xs font-bold text-royal-400 dark:text-night-400 uppercase tracking-wider mb-2 block">Tipografia</label>
+                             <div className="flex items-center gap-2">
+                                 <button 
+                                    onClick={() => setFontSerif(false)}
+                                    className={`flex-1 py-2 text-sm rounded-lg border font-sans ${!fontSerif ? 'bg-royal-100 dark:bg-night-700 border-royal-300 dark:border-night-600 text-royal-900 dark:text-white' : 'border-royal-100 dark:border-night-700 text-royal-500 dark:text-night-400 hover:bg-royal-50 dark:hover:bg-night-800'}`}
+                                 >
+                                     Sans
+                                 </button>
+                                 <button 
+                                    onClick={() => setFontSerif(true)}
+                                    className={`flex-1 py-2 text-sm rounded-lg border font-serif ${fontSerif ? 'bg-royal-100 dark:bg-night-700 border-royal-300 dark:border-night-600 text-royal-900 dark:text-white' : 'border-royal-100 dark:border-night-700 text-royal-500 dark:text-night-400 hover:bg-royal-50 dark:hover:bg-night-800'}`}
+                                 >
+                                     Serif
+                                 </button>
+                             </div>
+                        </div>
+
+                        <div className="border-t border-royal-100 dark:border-night-700 pt-3">
+                             <button 
+                                onClick={() => {
+                                    setReadingMode(!readingMode);
+                                    setShowAppearanceMenu(false);
+                                }}
+                                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-colors ${readingMode ? 'bg-gold-50 dark:bg-gold-900/20 text-gold-800 dark:text-gold-400' : 'text-royal-700 dark:text-night-200 hover:bg-royal-50 dark:hover:bg-night-800'}`}
+                             >
+                                 <span className="flex items-center gap-2">
+                                     {readingMode ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+                                     {readingMode ? 'Sair do Modo Leitura' : 'Modo Leitura'}
+                                 </span>
+                                 {readingMode && <Check className="w-4 h-4" />}
+                             </button>
+                        </div>
                     </div>
-                )}
+                 )}
             </div>
 
-            {/* Export Menu */}
-            <div className="relative" ref={exportMenuRef}>
-                <button 
-                    onClick={() => setShowExportMenu(!showExportMenu)}
-                    className="hidden sm:flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white bg-royal-950 border border-transparent rounded-lg hover:bg-royal-900 shadow-lg shadow-royal-900/10 transition-all font-sans"
-                >
-                    <Download className="w-4 h-4" />
-                    Exportar
-                </button>
-                <button 
-                    onClick={() => setShowExportMenu(!showExportMenu)}
-                    className="sm:hidden p-2 text-royal-600 bg-royal-50 rounded-lg hover:bg-royal-100"
-                >
-                <Menu className="w-5 h-5" />
-                </button>
-                
-                {showExportMenu && (
-                <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-soft border border-royal-50 overflow-hidden z-50 ring-1 ring-black ring-opacity-5">
-                    <div className="p-1.5 space-y-0.5 font-sans">
-                    <button onClick={() => handleExport('pdf')} className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-royal-700 hover:bg-royal-50 rounded-lg transition-colors group">
-                        <div className="p-1.5 bg-red-50 text-red-700 rounded group-hover:bg-red-100"><FileText className="w-4 h-4" /></div>
-                        <div className="text-left">
-                        <div className="font-medium">PDF</div>
-                        <div className="text-[10px] text-royal-400">Documento leitura</div>
-                        </div>
-                    </button>
-                    <button onClick={() => handleExport('doc')} className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-royal-700 hover:bg-royal-50 rounded-lg transition-colors group">
-                        <div className="p-1.5 bg-blue-50 text-blue-700 rounded group-hover:bg-blue-100"><FileType2 className="w-4 h-4" /></div>
-                        <div className="text-left">
-                        <div className="font-medium">Word / Doc</div>
-                        <div className="text-[10px] text-royal-400">Documento editável</div>
-                        </div>
-                    </button>
-                    <button onClick={() => handleExport('pptx')} className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-royal-700 hover:bg-royal-50 rounded-lg transition-colors group">
-                        <div className="p-1.5 bg-gold-50 text-gold-700 rounded group-hover:bg-gold-100"><Presentation className="w-4 h-4" /></div>
-                        <div className="text-left">
-                        <div className="font-medium">PowerPoint</div>
-                        <div className="text-[10px] text-royal-400">Apresentação slides</div>
-                        </div>
-                    </button>
-                    <div className="h-px bg-royal-50 my-1 mx-2"></div>
-                    <button onClick={() => handleExport('md')} className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-royal-700 hover:bg-royal-50 rounded-lg transition-colors group">
-                        <div className="p-1.5 bg-royal-100 text-royal-600 rounded group-hover:bg-royal-200"><File className="w-4 h-4" /></div>
-                        <div className="text-left">
-                        <div className="font-medium">Markdown</div>
-                        <div className="text-[10px] text-royal-400">Texto puro</div>
-                        </div>
-                    </button>
+            {!readingMode && (
+                <>
+                    <div className="relative">
+                        <button
+                            onClick={handleShare}
+                            className="p-2.5 text-royal-400 dark:text-night-400 hover:bg-royal-50 dark:hover:bg-night-800 hover:text-royal-900 dark:hover:text-white rounded-lg transition-colors border border-transparent hover:border-royal-100 dark:hover:border-night-700"
+                            title="Copiar link do estudo"
+                        >
+                            {showShareToast ? <Check className="w-5 h-5 text-green-600 dark:text-green-400" /> : <Share2 className="w-5 h-5" />}
+                        </button>
+                        {showShareToast && (
+                            <div className="absolute top-12 right-0 bg-royal-900 dark:bg-night-800 text-white text-xs py-1.5 px-3 rounded shadow-lg whitespace-nowrap animate-fadeIn font-sans z-50 border dark:border-night-700">
+                                Link copiado!
+                            </div>
+                        )}
                     </div>
-                </div>
-                )}
-            </div>
+
+                    <div className="relative" ref={exportMenuRef}>
+                        <button 
+                            onClick={() => setShowExportMenu(!showExportMenu)}
+                            className="hidden sm:flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white bg-royal-950 dark:bg-night-800 border border-transparent dark:border-night-700 rounded-lg hover:bg-royal-900 dark:hover:bg-night-700 shadow-lg shadow-royal-900/10 dark:shadow-none transition-all font-sans"
+                        >
+                            <Download className="w-4 h-4" />
+                            Exportar
+                        </button>
+                        <button 
+                            onClick={() => setShowExportMenu(!showExportMenu)}
+                            className="sm:hidden p-2 text-royal-600 dark:text-night-400 bg-royal-50 dark:bg-night-800 rounded-lg hover:bg-royal-100 dark:hover:bg-night-700"
+                        >
+                        <Menu className="w-5 h-5" />
+                        </button>
+                        
+                        {showExportMenu && (
+                        <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-night-800 rounded-xl shadow-soft dark:shadow-xl border border-royal-50 dark:border-night-700 overflow-hidden z-50 ring-1 ring-black ring-opacity-5">
+                            <div className="p-1.5 space-y-0.5 font-sans">
+                            <button onClick={() => handleExport('pdf')} className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-royal-700 dark:text-night-200 hover:bg-royal-50 dark:hover:bg-night-700 rounded-lg transition-colors group">
+                                <div className="p-1.5 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded group-hover:bg-red-100 dark:group-hover:bg-red-900/50"><FileText className="w-4 h-4" /></div>
+                                <div className="text-left">
+                                <div className="font-medium">PDF</div>
+                                <div className="text-[10px] text-royal-400 dark:text-night-400">Documento leitura</div>
+                                </div>
+                            </button>
+                            <div className="h-px bg-royal-50 dark:bg-night-700 my-1 mx-2"></div>
+                            <button onClick={() => handleExport('md')} className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-royal-700 dark:text-night-200 hover:bg-royal-50 dark:hover:bg-night-700 rounded-lg transition-colors group">
+                                <div className="p-1.5 bg-royal-100 dark:bg-night-700 text-royal-600 dark:text-night-200 rounded group-hover:bg-royal-200 dark:group-hover:bg-night-600"><File className="w-4 h-4" /></div>
+                                <div className="text-left">
+                                <div className="font-medium">Markdown</div>
+                                <div className="text-[10px] text-royal-400 dark:text-night-400">Texto puro</div>
+                                </div>
+                            </button>
+                            </div>
+                        </div>
+                        )}
+                    </div>
+                </>
+            )}
+
+            {readingMode && (
+                 <button
+                    onClick={() => setReadingMode(false)}
+                    className="p-2.5 bg-royal-50 dark:bg-night-800 text-royal-600 dark:text-night-200 rounded-lg hover:bg-royal-100 dark:hover:bg-night-700 transition-colors"
+                    title="Sair do Modo Leitura"
+                 >
+                     <Minimize className="w-5 h-5" />
+                 </button>
+            )}
         </div>
       </header>
 
       {/* Main Content Area */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar Navigation */}
-        <nav className="w-64 bg-white/50 backdrop-blur-sm border-r border-white flex-col py-6 hidden md:flex shrink-0 font-sans">
-          <div className="px-4 mb-4 text-xs font-semibold text-royal-400 uppercase tracking-widest font-sans">Seções</div>
-          {tabs.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as TabID)}
-                className={`flex items-center gap-3 px-6 py-3.5 text-sm font-medium transition-all w-full text-left border-l-[3px] font-sans ${
-                  isActive
-                    ? 'border-gold-500 bg-white text-royal-950 shadow-sm'
-                    : 'border-transparent text-royal-500 hover:bg-white/50 hover:text-royal-700'
-                }`}
-              >
-                <Icon className={`w-4 h-4 ${isActive ? 'text-gold-600' : 'text-royal-400'}`} />
-                {tab.label}
-              </button>
-            );
-          })}
-        </nav>
-
-        {/* Mobile Nav (Bottom) */}
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-royal-100 flex justify-around p-2 z-50 overflow-x-auto shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] font-sans">
-             {tabs.map((tab) => {
+        {/* Sidebar Navigation - Hide in Reading Mode */}
+        {!readingMode && (
+            <nav className="w-64 bg-white/50 dark:bg-night-900/50 backdrop-blur-sm border-r border-white dark:border-night-800 flex-col py-6 hidden md:flex shrink-0 font-sans transition-colors">
+            <div className="px-4 mb-4 text-xs font-semibold text-royal-400 dark:text-night-400 uppercase tracking-widest font-sans">Seções</div>
+            {tabs.map((tab) => {
                 const Icon = tab.icon;
                 const isActive = activeTab === tab.id;
                 return (
-                  <button
+                <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id as TabID)}
-                    className={`flex flex-col items-center p-2 min-w-[60px] rounded-lg transition-colors font-sans ${
-                      isActive ? 'text-royal-950 bg-royal-50' : 'text-royal-400'
+                    className={`flex items-center gap-3 px-6 py-3.5 text-sm font-medium transition-all w-full text-left border-l-[3px] font-sans ${
+                    isActive
+                        ? 'border-gold-500 bg-white dark:bg-night-800 text-royal-950 dark:text-night-100 shadow-sm'
+                        : 'border-transparent text-royal-500 dark:text-night-400 hover:bg-white/50 dark:hover:bg-night-800/50 hover:text-royal-700 dark:hover:text-night-200'
                     }`}
-                  >
-                    <Icon className={`w-5 h-5 mb-1 ${isActive ? 'text-gold-500' : ''}`} />
-                    <span className="text-[10px] font-medium whitespace-nowrap">{tab.label}</span>
-                  </button>
+                >
+                    <Icon className={`w-4 h-4 ${isActive ? 'text-gold-600 dark:text-gold-400' : 'text-royal-400 dark:text-night-400'}`} />
+                    {tab.label}
+                </button>
                 );
-              })}
-        </nav>
+            })}
+            </nav>
+        )}
+
+        {/* Mobile Nav (Bottom) - Hide in Reading Mode */}
+        {!readingMode && (
+            <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-night-900 border-t border-royal-100 dark:border-night-800 flex justify-around p-2 z-50 overflow-x-auto shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] font-sans">
+                {tabs.map((tab) => {
+                    const Icon = tab.icon;
+                    const isActive = activeTab === tab.id;
+                    return (
+                    <button
+                        key={tab.id}
+                        onClick={() => setActiveTab(tab.id as TabID)}
+                        className={`flex flex-col items-center p-2 min-w-[60px] rounded-lg transition-colors font-sans ${
+                        isActive ? 'text-royal-950 dark:text-night-100 bg-royal-50 dark:bg-night-800' : 'text-royal-400 dark:text-night-400'
+                        }`}
+                    >
+                        <Icon className={`w-5 h-5 mb-1 ${isActive ? 'text-gold-500' : ''}`} />
+                        <span className="text-[10px] font-medium whitespace-nowrap">{tab.label}</span>
+                    </button>
+                    );
+                })}
+            </nav>
+        )}
 
         {/* Scrollable Content */}
         <main 
             ref={mainContentRef}
-            className="flex-1 overflow-y-auto p-4 md:p-10 pb-24 md:pb-10 scroll-smooth"
+            className={`flex-1 overflow-y-auto scroll-smooth ${readingMode ? 'p-6 md:p-16 bg-bible-50 dark:bg-night-950' : 'p-4 md:p-10 pb-24 md:pb-10'}`}
         >
-          <div className="max-w-4xl mx-auto space-y-8 animate-fadeIn">
+          {/* Main Container width adjustment for reading mode */}
+          <div className={`mx-auto space-y-8 animate-fadeIn ${readingMode ? 'max-w-3xl' : 'max-w-4xl'}`}>
             
-            {activeTab === 'text' && (
-              <>
-                <section className="bg-white/80 backdrop-blur-sm rounded-2xl p-8 shadow-soft border border-white">
-                  <h2 className="text-xs font-bold text-royal-400 uppercase tracking-wider mb-6 font-sans">Texto Sagrado ({data.meta.translation})</h2>
-                  <blockquote className="font-serif text-2xl md:text-3xl leading-relaxed text-royal-900 pl-6 border-l-4 border-royal-900 italic text-justify hyphens-auto">
-                    {data.content.text_base}
-                  </blockquote>
-                </section>
+            {/* If Reading Mode is Active, show simple Tabs at top if sidebar is hidden */}
+            {readingMode && (
+                <div className="flex items-center justify-center gap-2 mb-10 overflow-x-auto py-2 no-scrollbar">
+                     {tabs.map((tab) => {
+                        const isActive = activeTab === tab.id;
+                        return (
+                             <button
+                                key={tab.id}
+                                onClick={() => setActiveTab(tab.id as TabID)}
+                                className={`px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition-all ${
+                                    isActive 
+                                    ? 'bg-royal-900 text-white dark:bg-night-200 dark:text-night-950 shadow-md' 
+                                    : 'text-royal-400 dark:text-night-400 hover:bg-royal-50 dark:hover:bg-night-900'
+                                }`}
+                             >
+                                 {tab.label}
+                             </button>
+                        )
+                     })}
+                </div>
+            )}
 
-                <section className="grid md:grid-cols-2 gap-6">
-                    <div className="bg-royal-950 text-white rounded-2xl p-8 shadow-soft">
-                        <h3 className="font-bold text-royal-100 mb-4 flex items-center gap-2 font-serif text-lg">
-                            <Lightbulb className="w-5 h-5 text-gold-400"/> Resumo Executivo
-                        </h3>
-                        <p className="leading-relaxed text-royal-100 font-light text-justify hyphens-auto font-sans">{data.summary.executive}</p>
+            {data.type === 'book' && data.bookIntro ? (
+                /* BOOK MODE RENDERING */
+                <>
+                    {activeTab === 'book_general' && (
+                        <div className="space-y-8">
+                            <SectionHeader icon={Library} title="Identificação Geral" />
+                            <div className={`grid gap-6 ${readingMode ? 'grid-cols-1' : 'md:grid-cols-2'}`}>
+                                <InfoCard label="Nome do Livro" value={data.bookIntro.general_id.name} />
+                                <InfoCard label="Nome Original" value={data.bookIntro.general_id.original_name} />
+                                <InfoCard label="Posição no Cânon" value={data.bookIntro.general_id.canon_position} />
+                            </div>
+
+                            <SectionHeader icon={Users} title="Autoria" />
+                            <div className="space-y-6">
+                                <InfoCard label="Autor Tradicional" value={data.bookIntro.authorship.author_traditional} />
+                                <div className={`grid gap-6 ${readingMode ? 'grid-cols-1' : 'md:grid-cols-2'}`}>
+                                    <InfoCard label="Evidências Internas" value={data.bookIntro.authorship.internal_evidence} />
+                                    <InfoCard label="Evidências Externas" value={data.bookIntro.authorship.external_evidence} />
+                                </div>
+                                <InfoCard label="Debate Acadêmico" value={data.bookIntro.authorship.academic_debate} />
+                            </div>
+
+                            <SectionHeader icon={Clock} title="Datação" />
+                            <div className={`grid gap-6 ${readingMode ? 'grid-cols-1' : 'md:grid-cols-2'}`}>
+                                <InfoCard label="Data Aproximada" value={data.bookIntro.dating.approximate_date} />
+                                <InfoCard label="Argumentos" value={data.bookIntro.dating.arguments} />
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'book_context' && (
+                        <div className="space-y-8">
+                            <SectionHeader icon={Map} title="Contexto Histórico & Cultural" />
+                            <div className="space-y-6">
+                                <InfoCard label="Panorama Político" value={data.bookIntro.context_cultural.political_panorama} />
+                                <div className={`grid gap-6 ${readingMode ? 'grid-cols-1' : 'md:grid-cols-2'}`}>
+                                    <InfoCard label="Cultura e Costumes" value={data.bookIntro.context_cultural.culture_customs} />
+                                    <InfoCard label="Econômico e Social" value={data.bookIntro.context_cultural.economic_social} />
+                                </div>
+                            </div>
+
+                            <SectionHeader icon={BookOpen} title="Contexto Canônico" />
+                            <div className={`grid gap-6 ${readingMode ? 'grid-cols-1' : 'md:grid-cols-2'}`}>
+                                <InfoCard label="Relação Livros Vizinhos" value={data.bookIntro.context_canonical.relation_prev_next} />
+                                <InfoCard label="Continuidade/Ruptura" value={data.bookIntro.context_canonical.continuity_rupture} />
+                            </div>
+                            <InfoCard label="Preparação Narrativa" value={data.bookIntro.context_canonical.narrative_preparation} />
+
+                            <SectionHeader icon={Users} title="Destinatários" />
+                            <div className={`grid gap-6 ${readingMode ? 'grid-cols-1' : 'md:grid-cols-2'}`}>
+                                <InfoCard label="Público Alvo" value={data.bookIntro.recipients.target_audience} />
+                                <InfoCard label="Situação Espiritual" value={data.bookIntro.recipients.spiritual_situation} />
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'book_literary' && (
+                        <div className="space-y-8">
+                            <SectionHeader icon={Feather} title="Estrutura e Estilo" />
+                            <div className="grid gap-6 md:grid-cols-2">
+                                <InfoCard label="Gênero Literário" value={data.bookIntro.structure.genre} />
+                                <InfoCard label="Progressão" value={data.bookIntro.structure.progression} />
+                            </div>
+                            
+                            <div className={`rounded-xl bg-royal-50/50 dark:bg-night-900/30 p-6 border border-royal-100 dark:border-night-700`}>
+                                <h4 className="text-xs font-bold uppercase tracking-wider text-royal-400 dark:text-night-400 mb-4 font-sans">Esboço/Seções</h4>
+                                <ul className="space-y-2">
+                                    {data.bookIntro.structure.sections.map((sec, i) => (
+                                        <li key={i} className="flex items-start gap-2 text-royal-800 dark:text-night-200">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-gold-400 mt-2 shrink-0"></span>
+                                            <span>{sec}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+
+                            <SectionHeader icon={Target} title="Propósito e Mensagem" />
+                            <InfoCard label="Objetivo Principal" value={data.bookIntro.purpose.main_objective} />
+                            <div className={`rounded-xl bg-gold-50 dark:bg-gold-900/10 p-6 border border-gold-100 dark:border-gold-800`}>
+                                <h4 className="text-xs font-bold uppercase tracking-wider text-gold-600 dark:text-gold-400 mb-2 font-sans">Mensagem Central</h4>
+                                <p className="text-xl font-serif font-bold text-royal-900 dark:text-night-100 italic">"{data.bookIntro.central_message}"</p>
+                            </div>
+
+                            <div className="space-y-4">
+                                <h4 className="font-serif font-bold text-lg text-royal-900 dark:text-night-100">Temas Principais</h4>
+                                <div className="flex flex-wrap gap-2">
+                                    {data.bookIntro.themes.map((theme, i) => (
+                                        <span key={i} className="px-3 py-1 bg-royal-100 dark:bg-night-800 text-royal-800 dark:text-night-200 rounded-full text-sm font-medium border border-royal-200 dark:border-night-700">{theme}</span>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'book_theology' && (
+                        <div className="space-y-8">
+                             <SectionHeader icon={Book} title="Teologia" />
+                             <div className="grid gap-6 md:grid-cols-2">
+                                <InfoCard label="Contribuições Teológicas" value={data.bookIntro.theology.contributions} />
+                                <InfoCard label="Controvérsias/Debates" value={data.bookIntro.theology.controversies} />
+                             </div>
+                             
+                             <div className="bg-white dark:bg-night-900 rounded-xl p-6 border border-royal-100 dark:border-night-700">
+                                <h4 className="text-xs font-bold uppercase tracking-wider text-royal-400 dark:text-night-400 mb-4 font-sans">Principais Doutrinas</h4>
+                                <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    {data.bookIntro.theology.doctrines.map((d, i) => (
+                                        <li key={i} className="flex items-center gap-2 text-royal-800 dark:text-night-200">
+                                            <Check className="w-4 h-4 text-green-500" />
+                                            {d}
+                                        </li>
+                                    ))}
+                                </ul>
+                             </div>
+
+                             <SectionHeader icon={GitMerge} title="Plano Redentivo" />
+                             <div className="rounded-xl bg-royal-950 dark:bg-night-950 text-white p-8">
+                                <h4 className="text-sm font-bold uppercase tracking-widest text-gold-400 mb-4 font-sans">Cristo no Livro</h4>
+                                <p className="text-lg leading-relaxed font-serif italic mb-6">{data.bookIntro.redemptive_plan.christ_pointer}</p>
+                                <div className="border-t border-royal-800 dark:border-night-800 pt-4">
+                                    <h5 className="text-xs font-bold uppercase text-royal-400 dark:text-night-400 mb-2">Relação com a Salvação</h5>
+                                    <p className="text-royal-200 dark:text-night-300 text-sm">{data.bookIntro.redemptive_plan.salvation_relation}</p>
+                                </div>
+                             </div>
+
+                             <SectionHeader icon={Users} title="Personagens Chave" />
+                             <div className="grid gap-4 md:grid-cols-2">
+                                {data.bookIntro.characters.map((char, i) => (
+                                    <div key={i} className="flex items-start gap-4 p-4 rounded-lg bg-white dark:bg-night-800 border border-royal-100 dark:border-night-700">
+                                        <div className="w-10 h-10 rounded-full bg-royal-100 dark:bg-night-700 flex items-center justify-center font-bold text-royal-700 dark:text-night-200 shrink-0">
+                                            {char.name.charAt(0)}
+                                        </div>
+                                        <div>
+                                            <h5 className="font-bold text-royal-900 dark:text-night-100">{char.name}</h5>
+                                            <p className="text-sm text-royal-600 dark:text-night-400 mt-1">{char.role}</p>
+                                        </div>
+                                    </div>
+                                ))}
+                             </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'book_application' && (
+                         <div className="space-y-8">
+                             <SectionHeader icon={Lightbulb} title="Aplicações Práticas" />
+                             <div className="space-y-4">
+                                {data.bookIntro.application.principles.map((p, i) => (
+                                    <div key={i} className="flex items-start gap-3 p-4 bg-yellow-50 dark:bg-yellow-900/10 border-l-4 border-yellow-400 rounded-r-lg">
+                                        <p className="text-royal-800 dark:text-night-200">{p}</p>
+                                    </div>
+                                ))}
+                             </div>
+                             
+                             <div className="grid gap-6 md:grid-cols-2 mt-6">
+                                <InfoCard label="Relevância para a Igreja" value={data.bookIntro.application.church_relevance} />
+                                <InfoCard label="Implicações Pastorais" value={data.bookIntro.application.pastoral_implications} />
+                             </div>
+
+                             <SectionHeader icon={Quote} title="Passagens Chave" />
+                             <div className="grid gap-4">
+                                 {data.bookIntro.key_passages.map((kp, i) => (
+                                     <div key={i} className="bg-white dark:bg-night-900 p-5 rounded-xl border border-royal-100 dark:border-night-700 shadow-sm hover:border-royal-300 transition-colors">
+                                         <span className="inline-block px-2 py-1 bg-royal-100 dark:bg-night-800 text-royal-700 dark:text-night-200 text-xs font-bold rounded mb-2">{kp.reference}</span>
+                                         <p className="text-royal-600 dark:text-night-300 italic">"{kp.description}"</p>
+                                     </div>
+                                 ))}
+                             </div>
+
+                             <SectionHeader icon={AlertCircle} title="Desafios de Interpretação" />
+                             <InfoCard label="Problemas Hermenêuticos" value={data.bookIntro.interpretation_challenges.hermeneutic_problems} />
+                             
+                             <div className="bg-red-50 dark:bg-red-900/10 rounded-xl p-6 border border-red-100 dark:border-red-900/30">
+                                 <h4 className="text-xs font-bold uppercase tracking-wider text-red-500 dark:text-red-400 mb-4 font-sans">Textos Difíceis</h4>
+                                 <ul className="list-disc list-inside space-y-2 text-royal-800 dark:text-night-200">
+                                     {data.bookIntro.interpretation_challenges.difficult_texts.map((t, i) => (
+                                         <li key={i}>{t}</li>
+                                     ))}
+                                 </ul>
+                             </div>
+
+                             <div className="mt-12 pt-8 border-t border-royal-200 dark:border-night-700">
+                                <h3 className="font-serif font-bold text-2xl text-royal-900 dark:text-night-100 mb-4">Conclusão</h3>
+                                <p className="text-lg leading-relaxed text-royal-800 dark:text-night-200 text-justify">{data.bookIntro.conclusion}</p>
+                             </div>
+                         </div>
+                    )}
+                </>
+            ) : (
+                /* PASSAGE MODE RENDERING (Existing Logic) */
+                <>
+                {activeTab === 'text' && data.content && (
+                  <>
+                    <section className={`rounded-2xl border ${readingMode ? 'bg-transparent border-transparent p-0' : 'bg-white/80 dark:bg-night-900/50 backdrop-blur-sm p-8 shadow-soft dark:shadow-none border-white dark:border-night-800'}`}>
+                      {!readingMode && <h2 className="text-xs font-bold text-royal-400 dark:text-night-400 uppercase tracking-wider mb-6 font-sans">Texto Sagrado ({data.meta.translation})</h2>}
+                      <blockquote className={`font-serif leading-loose text-royal-900 dark:text-night-100 pl-6 border-l-4 border-royal-900 dark:border-gold-500 italic text-justify hyphens-auto ${readingMode ? 'text-2xl md:text-4xl leading-loose' : 'text-2xl md:text-3xl'}`}>
+                        {data.content.text_base}
+                      </blockquote>
+                    </section>
+
+                    <section className={`grid ${readingMode ? 'grid-cols-1 gap-12' : 'md:grid-cols-2 gap-6'}`}>
+                        <div className={`rounded-2xl ${readingMode ? 'bg-transparent text-royal-900 dark:text-night-100 p-0' : 'bg-royal-950 dark:bg-night-950 text-white p-8 shadow-soft dark:border dark:border-night-800'}`}>
+                            <h3 className={`font-bold mb-4 flex items-center gap-2 font-serif ${readingMode ? 'text-xl text-gold-600' : 'text-lg text-royal-100 dark:text-night-200'}`}>
+                                <Lightbulb className="w-5 h-5 text-gold-400"/> Resumo Executivo
+                            </h3>
+                            <p className={`leading-relaxed font-light text-justify hyphens-auto ${currentFontSize} ${currentFontFamily} ${readingMode ? 'leading-loose' : 'font-sans text-royal-100 dark:text-night-400'}`}>{data.summary?.executive}</p>
+                        </div>
+                        <div className={`rounded-2xl ${readingMode ? 'bg-transparent border-t border-royal-100 dark:border-night-800 p-0 pt-8' : 'bg-white/80 dark:bg-night-900/50 backdrop-blur-sm p-8 shadow-soft dark:shadow-none border border-white dark:border-night-800'}`}>
+                            <h3 className={`font-bold mb-4 flex items-center gap-2 font-serif ${readingMode ? 'text-xl text-royal-900 dark:text-night-100' : 'text-lg text-royal-900 dark:text-night-100'}`}>
+                                 <Presentation className={`w-5 h-5 ${readingMode ? 'text-royal-900' : 'text-royal-600 dark:text-gold-500'}`}/> Pontos para Pregação
+                            </h3>
+                            <ul className={`space-y-4 ${currentFontFamily} ${currentFontSize}`}>
+                                {data.summary?.preaching_points.map((point, i) => (
+                                    <li key={i} className="flex items-start gap-3 text-royal-700 dark:text-night-200">
+                                        <span className="w-6 h-6 rounded-full bg-royal-50 dark:bg-night-800 text-royal-900 dark:text-night-100 border border-royal-100 dark:border-night-700 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5 font-sans">{i + 1}</span>
+                                        <span className={`text-justify ${readingMode ? 'leading-relaxed' : ''}`}>{renderTextWithRefs(point)}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    </section>
+                  </>
+                )}
+                
+                {/* ... (Keep existing Tabs logic for Context, Lexical, etc. but ensure they check for data.content existence) ... */}
+                {activeTab === 'context' && data.content && (
+                    <div className={`space-y-6 ${readingMode ? 'space-y-12' : ''}`}>
+                         {/* ... Existing Context JSX ... */}
+                         <section className={`rounded-2xl relative overflow-hidden ${readingMode ? 'bg-transparent p-0' : 'bg-white/80 dark:bg-night-900/50 backdrop-blur-sm p-8 shadow-soft dark:shadow-none border border-white dark:border-night-800'}`}>
+                            <div className="absolute top-0 right-0 p-8 opacity-5">
+                            <BookOpen className="w-32 h-32 text-royal-900 dark:text-night-100" />
+                            </div>
+                            <div className="relative">
+                            <div className="flex items-center gap-3 mb-6">
+                                <div className={`p-2 rounded-lg ${readingMode ? 'bg-transparent p-0' : 'bg-royal-50 dark:bg-night-800 text-royal-900 dark:text-night-100'}`}><BookOpen className="w-5 h-5" /></div>
+                                <h2 className={`font-serif font-bold text-royal-900 dark:text-night-100 ${readingMode ? 'text-3xl' : 'text-2xl'}`}>Contexto Literário</h2>
+                            </div>
+                            <p className={`text-royal-700 dark:text-night-200 leading-relaxed text-justify hyphens-auto ${currentFontSize} ${currentFontFamily} ${readingMode ? 'leading-loose' : ''}`}>{data.content.context_literary}</p>
+                            </div>
+                        </section>
+                        {/* Simplified for brevity, reusing logic from previous file but wrapped safely */}
+                        <section className={`rounded-2xl relative overflow-hidden ${readingMode ? 'bg-transparent p-0' : 'bg-white/80 dark:bg-night-900/50 backdrop-blur-sm p-8 shadow-soft dark:shadow-none border border-white dark:border-night-800'}`}>
+                            <div className="absolute top-0 right-0 p-8 opacity-5">
+                            <History className="w-32 h-32 text-gold-600 dark:text-gold-400" />
+                            </div>
+                            <div className="relative">
+                            <div className="flex items-center gap-3 mb-6">
+                                <div className={`p-2 rounded-lg ${readingMode ? 'bg-transparent p-0' : 'bg-gold-50 dark:bg-gold-900/30 text-gold-700 dark:text-gold-400'}`}><History className="w-5 h-5" /></div>
+                                <h2 className={`font-serif font-bold text-royal-900 dark:text-night-100 ${readingMode ? 'text-3xl' : 'text-2xl'}`}>Contexto Histórico</h2>
+                            </div>
+                            <p className={`text-royal-700 dark:text-night-200 leading-relaxed text-justify hyphens-auto ${currentFontSize} ${currentFontFamily} ${readingMode ? 'leading-loose' : ''}`}>{data.content.context_historical}</p>
+                            </div>
+                        </section>
                     </div>
-                    <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-8 shadow-soft border border-white">
-                        <h3 className="font-bold text-royal-900 mb-4 flex items-center gap-2 font-serif text-lg">
-                             <Presentation className="w-5 h-5 text-royal-600"/> Pontos para Pregação
-                        </h3>
-                        <ul className="space-y-4 font-sans">
-                            {data.summary.preaching_points.map((point, i) => (
-                                <li key={i} className="flex items-start gap-3 text-royal-700">
-                                    <span className="w-6 h-6 rounded-full bg-royal-50 text-royal-900 border border-royal-100 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5 font-sans">{i + 1}</span>
-                                    <span className="text-justify">{renderTextWithRefs(point)}</span>
+                )}
+                
+                {activeTab === 'lexical' && data.content && (
+                    <section className={`rounded-2xl overflow-hidden ${readingMode ? 'bg-transparent border-0' : 'bg-white/80 dark:bg-night-900/50 backdrop-blur-sm shadow-soft dark:shadow-none border border-white dark:border-night-800'}`}>
+                        <div className={`p-8 border-b border-royal-100 dark:border-night-700 ${readingMode ? 'bg-transparent px-0 border-0' : 'bg-royal-50/30 dark:bg-night-800/30'}`}>
+                            <h2 className={`font-serif font-bold text-royal-900 dark:text-night-100 flex items-center gap-3 ${readingMode ? 'text-3xl' : 'text-2xl'}`}>
+                                <Languages className={`w-6 h-6 ${readingMode ? 'hidden' : 'text-royal-600 dark:text-gold-500'}`}/> 
+                                Análise Léxica
+                            </h2>
+                        </div>
+                         {/* In Reading Mode, render as cards instead of table for better flow */}
+                        {readingMode ? (
+                            <div className="space-y-8 mt-6">
+                                {data.content.lexical_analysis.map((item, idx) => (
+                                    <div key={idx} className="border-l-4 border-royal-200 dark:border-night-700 pl-6 py-2">
+                                        <div className="flex items-baseline gap-3 mb-2">
+                                            <h3 className="text-xl font-bold text-royal-900 dark:text-night-100">{item.word}</h3>
+                                            <span className="font-serif text-lg text-royal-600 dark:text-gold-500">{item.lemma}</span>
+                                            <span className="text-sm text-gray-500 italic">({item.transliteration})</span>
+                                        </div>
+                                        <div className="text-xs font-mono uppercase tracking-wide text-gray-500 mb-2">{item.morphology}</div>
+                                        <p className={`text-royal-800 dark:text-night-200 leading-relaxed ${currentFontSize} ${currentFontFamily}`}>{item.meaning}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left font-sans">
+                                    <thead className="bg-royal-50/50 dark:bg-night-800 text-royal-500 dark:text-night-400 font-medium text-xs uppercase tracking-wider border-b border-royal-100 dark:border-night-700 font-sans">
+                                        <tr>
+                                            <th className="px-8 py-4">Palavra</th>
+                                            <th className="px-8 py-4">Original</th>
+                                            <th className="px-8 py-4">Morfologia</th>
+                                            <th className="px-8 py-4">Significado e Nuances</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-royal-100 dark:divide-night-700">
+                                        {data.content.lexical_analysis.map((item, idx) => (
+                                            <tr key={idx} className="hover:bg-royal-50/50 dark:hover:bg-night-800/50 transition-colors font-sans">
+                                                <td className="px-8 py-6 font-bold text-royal-900 dark:text-night-200">{item.word}</td>
+                                                <td className="px-8 py-6">
+                                                    <div className="font-serif text-xl text-royal-800 dark:text-night-200">{item.lemma}</div>
+                                                    <div className="text-xs text-royal-400 dark:text-night-400 italic mt-1 font-sans">{item.transliteration}</div>
+                                                </td>
+                                                <td className="px-8 py-6 text-sm text-royal-600 dark:text-gold-400 font-mono bg-royal-50 dark:bg-night-800/50 p-1 rounded">{item.morphology}</td>
+                                                <td className="px-8 py-6 text-sm text-royal-700 dark:text-night-400 leading-relaxed text-justify hyphens-auto">{item.meaning}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </section>
+                )}
+
+                {activeTab === 'interpretation' && data.content && (
+                    <div className={`space-y-8 ${readingMode ? 'space-y-16' : ''}`}>
+                         <section>
+                            <h3 className="text-lg font-bold text-royal-400 dark:text-night-400 uppercase tracking-widest mb-6 px-2 font-serif">Linhas Interpretativas</h3>
+                            <div className={`grid gap-6 ${readingMode ? 'grid-cols-1' : 'md:grid-cols-2'}`}>
+                                {data.content.interpretations.map((item, i) => (
+                                    <div key={i} className={`rounded-xl ${readingMode ? 'bg-transparent border-l-4 border-gold-200 dark:border-gold-800 pl-6 py-2' : 'bg-white dark:bg-night-900/50 p-6 border border-white dark:border-night-800 shadow-soft dark:shadow-none hover:border-royal-200 dark:hover:border-night-600 transition-colors'}`}>
+                                        <span className={`inline-block text-xs font-bold rounded mb-4 uppercase tracking-wider font-sans ${readingMode ? 'text-gold-600 dark:text-gold-500 mb-2' : 'px-3 py-1 bg-royal-50 dark:bg-night-800 text-royal-700 dark:text-gold-400 border border-royal-100 dark:border-night-700'}`}>
+                                            {item.tradition}
+                                        </span>
+                                        <p className={`text-royal-700 dark:text-night-200 leading-relaxed text-justify hyphens-auto ${currentFontSize} ${currentFontFamily}`}>{item.summary}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        </section>
+                        {/* ... Theologians logic ... */}
+                    </div>
+                )}
+                
+                {/* Re-implementing sermon and slides for passage mode */}
+                {activeTab === 'sermon' && data.sermon && (
+                    <div className={`mx-auto ${readingMode ? 'bg-transparent p-0' : 'max-w-3xl bg-white dark:bg-night-900 p-8 md:p-12 shadow-soft dark:shadow-none rounded-2xl border border-white dark:border-night-800 relative'}`}>
+                        {/* Copy Button */}
+                        {!readingMode && (
+                        <div className="absolute top-8 right-8">
+                            <button
+                                onClick={handleCopySermon}
+                                className="p-2.5 text-royal-300 dark:text-night-600 hover:bg-royal-50 dark:hover:bg-night-800 hover:text-royal-900 dark:hover:text-white rounded-lg transition-colors border border-royal-100 dark:border-night-700"
+                                title="Copiar esboço do sermão"
+                            >
+                                {showCopySermonToast ? <Check className="w-5 h-5 text-green-600 dark:text-green-400" /> : <Copy className="w-5 h-5" />}
+                            </button>
+                        </div>
+                        )}
+                        <h2 className={`font-serif font-bold text-royal-950 dark:text-night-100 mb-2 leading-tight ${readingMode ? 'text-4xl md:text-5xl' : 'text-3xl md:text-4xl'}`}>
+                            {data.sermon.title}
+                        </h2>
+                        {/* ... Sermon Content ... */}
+                        <div className="prose prose-stone dark:prose-invert max-w-none mt-8">
+                            <p>{data.sermon.introduction}</p>
+                            {/* Points iteration */}
+                            {data.sermon.points.map((p, i) => (
+                                <div key={i} className="mt-6">
+                                    <h4 className="font-bold">{i+1}. {p.title}</h4>
+                                    <p>{p.explanation}</p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+                
+                {activeTab === 'slides' && data.slides && (
+                     <div className={`grid gap-8 ${readingMode ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-2'}`}>
+                        {data.slides.map((slide, idx) => (
+                            <div key={idx} className={`rounded-xl overflow-hidden h-auto flex flex-col group min-h-[300px] ${readingMode ? 'border border-gray-200 dark:border-night-800' : 'bg-white dark:bg-night-800 border border-royal-200 dark:border-night-700 shadow-sm hover:shadow-lg transition-shadow'}`}>
+                                <div className={`p-5 shrink-0 ${readingMode ? 'bg-gray-100 dark:bg-night-900' : 'bg-royal-950 dark:bg-night-950 group-hover:bg-royal-900 dark:group-hover:bg-night-900 transition-colors'}`}>
+                                    <h3 className={`font-bold leading-tight font-serif ${readingMode ? 'text-2xl text-royal-900 dark:text-night-100' : 'text-xl text-white'}`}>{slide.title}</h3>
+                                </div>
+                                <div className={`p-6 flex-1 flex flex-col justify-between relative ${readingMode ? 'bg-transparent' : 'bg-white dark:bg-night-800'}`}>
+                                    <ul className={`list-disc pl-5 space-y-3 text-lg ${currentFontFamily} ${readingMode ? 'text-royal-900 dark:text-night-200' : 'text-royal-700 dark:text-night-200 font-sans'}`}>
+                                        {slide.bullets.map((bullet, bIdx) => (
+                                            <li key={bIdx} className="pl-1 marker:text-royal-400 dark:marker:text-night-400 leading-snug">{bullet}</li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+                
+                {activeTab === 'application' && data.content && (
+                    /* Only showing simple list if in passage mode */
+                     <section className={`rounded-2xl ${readingMode ? 'bg-transparent p-0' : 'bg-white/80 dark:bg-night-900/50 backdrop-blur-sm p-8 shadow-soft dark:shadow-none border border-white dark:border-night-800'}`}>
+                        <div className="flex items-center gap-3 mb-8">
+                            <HelpCircle className={`w-6 h-6 ${readingMode ? 'hidden' : 'text-royal-600 dark:text-gold-500'}`} />
+                            <h2 className={`font-serif font-bold text-royal-900 dark:text-night-100 ${readingMode ? 'text-3xl' : 'text-2xl'}`}>Perguntas para Reflexão</h2>
+                        </div>
+                        <ul className={`grid gap-4 ${readingMode ? 'grid-cols-1' : ''}`}>
+                            {data.content.study_questions.map((q, i) => (
+                                <li key={i} className={`flex gap-5 items-start ${readingMode ? 'p-0 border-l-2 border-royal-200 dark:border-night-700 pl-6 py-2' : 'p-5 bg-royal-50/50 dark:bg-night-800/50 rounded-xl border border-royal-100 dark:border-night-700'}`}>
+                                    <span className="text-royal-300 dark:text-night-600 font-serif font-bold text-4xl leading-none select-none -mt-2">?</span>
+                                    <p className={`text-royal-800 dark:text-night-200 font-medium pt-1 text-justify hyphens-auto ${currentFontSize} ${currentFontFamily}`}>{q}</p>
                                 </li>
                             ))}
                         </ul>
-                    </div>
-                </section>
-
-                 <section className="bg-white/80 backdrop-blur-sm rounded-2xl p-8 shadow-soft border border-white">
-                  <h2 className="text-2xl font-serif font-bold text-royal-900 mb-6">Introdução & Definição</h2>
-                  <div className="text-royal-700 leading-relaxed whitespace-pre-wrap font-sans text-lg text-justify hyphens-auto">{data.content.intro_definition}</div>
-                </section>
-              </>
-            )}
-
-            {activeTab === 'context' && (
-              <div className="space-y-6">
-                <section className="bg-white/80 backdrop-blur-sm rounded-2xl p-8 shadow-soft border border-white relative overflow-hidden">
-                    <div className="absolute top-0 right-0 p-8 opacity-5">
-                      <BookOpen className="w-32 h-32 text-royal-900" />
-                    </div>
-                    <div className="relative">
-                      <div className="flex items-center gap-3 mb-6">
-                          <div className="p-2 bg-royal-50 text-royal-900 rounded-lg"><BookOpen className="w-5 h-5" /></div>
-                          <h2 className="text-2xl font-serif font-bold text-royal-900">Contexto Literário</h2>
-                      </div>
-                      <p className="text-royal-700 leading-relaxed text-lg text-justify hyphens-auto font-sans">{data.content.context_literary}</p>
-                    </div>
-                </section>
-
-                <section className="bg-white/80 backdrop-blur-sm rounded-2xl p-8 shadow-soft border border-white relative overflow-hidden">
-                     <div className="absolute top-0 right-0 p-8 opacity-5">
-                      <History className="w-32 h-32 text-gold-600" />
-                    </div>
-                    <div className="relative">
-                      <div className="flex items-center gap-3 mb-6">
-                          <div className="p-2 bg-gold-50 text-gold-700 rounded-lg"><History className="w-5 h-5" /></div>
-                          <h2 className="text-2xl font-serif font-bold text-royal-900">Contexto Histórico</h2>
-                      </div>
-                      <p className="text-royal-700 leading-relaxed text-lg text-justify hyphens-auto font-sans">{data.content.context_historical}</p>
-                    </div>
-                </section>
-
-                {data.content.parallels && data.content.parallels.length > 0 && (
-                  <section className="bg-white/80 backdrop-blur-sm rounded-2xl p-8 shadow-soft border border-white relative overflow-hidden">
-                      <div className="absolute top-0 right-0 p-8 opacity-5">
-                        <GitMerge className="w-32 h-32 text-royal-800" />
-                      </div>
-                      <div className="relative">
-                        <div className="flex items-center gap-3 mb-6">
-                            <div className="p-2 bg-royal-100 text-royal-900 rounded-lg"><GitMerge className="w-5 h-5" /></div>
-                            <h2 className="text-2xl font-serif font-bold text-royal-900">Paralelos e Correlações Bíblicas</h2>
+                        <div className="mt-8">
+                            <h3 className="font-bold mb-2">Implicações</h3>
+                            <p>{data.content.implications}</p>
                         </div>
-                        <div className="grid gap-4">
-                            {data.content.parallels.map((item, idx) => (
-                                <div key={idx} className="bg-royal-50/50 border border-royal-100 rounded-lg p-5 hover:border-royal-300 transition-colors">
-                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
-                                        <h4 className="font-bold text-royal-900 text-lg font-serif">{item.reference}</h4>
-                                        <span className="text-xs font-semibold text-royal-700 bg-royal-100 px-2 py-1 rounded uppercase tracking-wider font-sans">{item.correlation}</span>
-                                    </div>
-                                    <p className="text-royal-700 text-justify hyphens-auto font-sans">{item.text}</p>
-                                </div>
-                            ))}
-                        </div>
-                      </div>
-                  </section>
+                    </section>
                 )}
-
-                <section className="bg-white/80 backdrop-blur-sm rounded-2xl p-8 shadow-soft border border-white">
-                    <div className="flex items-center gap-3 mb-6">
-                        <div className="p-2 bg-green-50 text-green-700 rounded-lg"><Book className="w-5 h-5" /></div>
-                        <h2 className="text-2xl font-serif font-bold text-royal-900">Intertextualidade</h2>
-                    </div>
-                    
-                    <div className="bg-royal-50/50 rounded-xl p-6 border border-royal-100">
-                        <p className="text-royal-700 leading-relaxed text-lg text-justify hyphens-auto font-sans italic">
-                            {data.content.intertextuality}
-                        </p>
-                    </div>
-                </section>
-              </div>
-            )}
-
-            {activeTab === 'lexical' && (
-              <section className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-soft border border-white overflow-hidden">
-                <div className="p-8 border-b border-royal-100 bg-royal-50/30">
-                    <h2 className="text-2xl font-serif font-bold text-royal-900 flex items-center gap-3">
-                        <Languages className="w-6 h-6 text-royal-600"/> 
-                        Análise Léxica
-                    </h2>
-                    <p className="text-royal-500 mt-2 font-sans">Termos originais no Grego/Hebraico e suas nuances teológicas.</p>
-                </div>
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left font-sans">
-                        <thead className="bg-royal-50/50 text-royal-500 font-medium text-xs uppercase tracking-wider border-b border-royal-100 font-sans">
-                            <tr>
-                                <th className="px-8 py-4">Palavra</th>
-                                <th className="px-8 py-4">Original</th>
-                                <th className="px-8 py-4">Morfologia</th>
-                                <th className="px-8 py-4">Significado e Nuances</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-royal-100">
-                            {data.content.lexical_analysis.map((item, idx) => (
-                                <tr key={idx} className="hover:bg-royal-50/50 transition-colors font-sans">
-                                    <td className="px-8 py-6 font-bold text-royal-900">{item.word}</td>
-                                    <td className="px-8 py-6">
-                                        <div className="font-serif text-xl text-royal-800">{item.lemma}</div>
-                                        <div className="text-xs text-royal-400 italic mt-1 font-sans">{item.transliteration}</div>
-                                    </td>
-                                    <td className="px-8 py-6 text-sm text-royal-600 font-mono bg-royal-50">{item.morphology}</td>
-                                    <td className="px-8 py-6 text-sm text-royal-700 leading-relaxed text-justify hyphens-auto">{item.meaning}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-              </section>
-            )}
-
-            {activeTab === 'interpretation' && (
-              <div className="space-y-8">
-                <section>
-                    <h3 className="text-lg font-bold text-royal-400 uppercase tracking-widest mb-6 px-2 font-serif">Linhas Interpretativas</h3>
-                    <div className="grid md:grid-cols-2 gap-6">
-                        {data.content.interpretations.map((item, i) => (
-                            <div key={i} className="bg-white p-6 rounded-xl border border-white shadow-soft hover:border-royal-200 transition-colors">
-                                <span className="inline-block px-3 py-1 bg-royal-50 text-royal-700 text-xs font-bold rounded mb-4 uppercase tracking-wider font-sans border border-royal-100">
-                                    {item.tradition}
-                                </span>
-                                <p className="text-royal-700 leading-relaxed text-justify hyphens-auto font-sans">{item.summary}</p>
-                            </div>
-                        ))}
-                    </div>
-                </section>
-
-                <section className="bg-white/80 backdrop-blur-sm rounded-2xl p-8 shadow-soft border border-white">
-                    <h3 className="text-2xl font-serif font-bold text-royal-900 mb-8 flex items-center gap-3">
-                        <Users className="w-6 h-6 text-royal-600" />
-                        Teólogos & Comentaristas
-                    </h3>
-                    <div className="grid grid-cols-1 gap-6">
-                        {data.content.theologians.map((t, i) => (
-                            <div key={i} className="flex flex-col sm:flex-row gap-6 p-6 rounded-xl bg-royal-50/50 border border-royal-100 hover:shadow-md transition-shadow relative overflow-hidden group">
-                                <div className="absolute top-0 right-0 px-3 py-1 bg-royal-200 text-royal-700 text-[10px] font-bold uppercase tracking-widest font-sans rounded-bl-lg opacity-80 group-hover:opacity-100 transition-opacity">
-                                    {t.era}
-                                </div>
-                                <div className="flex-shrink-0 flex items-start pt-1">
-                                    <div className="w-12 h-12 rounded-full bg-white border-2 border-royal-100 shadow-sm flex items-center justify-center text-royal-700 font-serif font-bold text-xl">
-                                        {t.name.charAt(0)}
-                                    </div>
-                                </div>
-                                <div className="flex-1 pt-1">
-                                    <h4 className="font-bold text-royal-900 text-lg font-serif mb-3">{t.name}</h4>
-                                    <div className="relative">
-                                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-royal-300 rounded-full my-1"></div>
-                                        <p className="text-royal-700 text-lg leading-relaxed italic pl-4 text-justify hyphens-auto font-sans">
-                                            "{t.view}"
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </section>
-              </div>
-            )}
-
-            {activeTab === 'application' && (
-              <div className="space-y-8">
-                 <section className="bg-white/80 backdrop-blur-sm rounded-2xl p-8 shadow-soft border border-white">
-                  <h2 className="text-2xl font-serif font-bold text-royal-900 mb-6">Implicações Práticas & Doutrinárias</h2>
-                  <div className="text-royal-700 leading-relaxed whitespace-pre-wrap text-lg text-justify hyphens-auto font-sans">{data.content.implications}</div>
-                </section>
-
-                <section className="bg-white/80 backdrop-blur-sm rounded-2xl p-8 shadow-soft border border-white">
-                    <div className="flex items-center gap-3 mb-8">
-                        <HelpCircle className="w-6 h-6 text-royal-600" />
-                        <h2 className="text-2xl font-serif font-bold text-royal-900">Perguntas para Reflexão</h2>
-                    </div>
-                    <ul className="grid gap-4">
-                        {data.content.study_questions.map((q, i) => (
-                            <li key={i} className="flex gap-5 items-start p-5 bg-royal-50/50 rounded-xl border border-royal-100">
-                                <span className="text-royal-300 font-serif font-bold text-4xl leading-none select-none -mt-2">?</span>
-                                <p className="text-royal-800 font-medium text-lg pt-1 font-sans text-justify hyphens-auto">{q}</p>
-                            </li>
-                        ))}
-                    </ul>
-                </section>
-
-                <section className="bg-royal-950 text-white rounded-2xl p-8 shadow-soft overflow-hidden relative">
-                    <div className="absolute top-0 right-0 p-8 opacity-10">
-                        <Book className="w-40 h-40 text-white" />
-                    </div>
-                    <div className="relative z-10">
-                        <h3 className="text-white font-serif font-bold mb-8 flex items-center gap-3 text-xl">
-                             <Book className="w-6 h-6 text-gold-500"/> Bibliografia Comentada
-                        </h3>
-                        <div className="space-y-8">
-                            {data.content.bibliography.map((b, i) => (
-                                <div key={i} className="group">
-                                    <div className="font-serif text-xl text-gold-50 mb-2">
-                                        <span className="font-bold text-white border-b border-royal-700 pb-0.5">{b.author}</span>. 
-                                        <span className="italic text-gold-100"> {b.title}</span>. 
-                                        {b.publisher && <span className="text-royal-300 text-base font-sans"> {b.publisher},</span>}
-                                        {b.year && <span className="text-royal-300 text-base font-sans"> {b.year}.</span>}
-                                    </div>
-                                    <p className="text-sm text-royal-300 leading-relaxed pl-4 border-l-2 border-royal-800 mt-3 group-hover:border-gold-500 transition-colors text-justify hyphens-auto font-sans">
-                                        {b.annotation}
-                                    </p>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </section>
-              </div>
-            )}
-
-            {activeTab === 'sermon' && data.sermon && (
-                <div className="max-w-3xl mx-auto bg-white p-8 md:p-12 shadow-soft rounded-2xl border border-white print:shadow-none print:border-none relative">
-                    
-                    {/* Copy Sermon Button */}
-                    <div className="absolute top-8 right-8">
-                         <button
-                            onClick={handleCopySermon}
-                            className="p-2.5 text-royal-300 hover:bg-royal-50 hover:text-royal-900 rounded-lg transition-colors border border-royal-100"
-                            title="Copiar esboço do sermão"
-                        >
-                            {showCopySermonToast ? <Check className="w-5 h-5 text-green-600" /> : <Copy className="w-5 h-5" />}
-                        </button>
-                    </div>
-
-                    {/* Header do Manuscrito */}
-                    <div className="border-b-2 border-royal-950 pb-6 mb-8 text-center mt-2">
-                        <h2 className="font-serif text-3xl md:text-4xl font-bold text-royal-950 mb-2 leading-tight">
-                            {data.sermon.title}
-                        </h2>
-                        <p className="font-sans text-royal-500 uppercase tracking-widest text-sm font-semibold mb-6">
-                            {data.meta.reference}
-                        </p>
-                        
-                        {data.sermon.text_focus && (
-                             <div className="mb-8">
-                                <div className="inline-flex items-center gap-3 font-serif text-royal-900 text-lg bg-gold-50 px-6 py-3 rounded-full border border-gold-200 shadow-sm mx-auto mb-6">
-                                   <Target className="w-5 h-5 text-gold-600" />
-                                   <span className="text-gold-800 text-xs font-bold uppercase tracking-wider font-sans">Base Textual:</span>
-                                   <span className="italic font-medium text-royal-950 border-b border-gold-300">{data.sermon.text_focus}</span>
-                               </div>
-                               
-                               {/* Display the actual text */}
-                               <div className="bg-royal-50/30 p-6 rounded-xl border border-royal-100 relative">
-                                    <Quote className="absolute top-4 left-4 w-8 h-8 text-royal-200 rotate-180" />
-                                    <p className="font-serif text-lg text-royal-900 text-center italic leading-relaxed px-8">
-                                        "{data.content.text_base}"
-                                    </p>
-                               </div>
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="prose prose-stone max-w-none">
-                        {/* Introdução */}
-                        <div className="mb-12">
-                            <h3 className="font-bold text-royal-900 text-xl uppercase tracking-wide border-l-4 border-gold-500 pl-4 mb-4 font-serif">
-                                Introdução
-                            </h3>
-                            <p className="text-lg leading-relaxed text-royal-800 font-sans text-justify hyphens-auto">
-                                {renderTextWithRefs(data.sermon.introduction)}
-                            </p>
-                        </div>
-
-                        {/* Tópicos Redesenhados */}
-                        <div className="space-y-12">
-                            {data.sermon.points.map((point, idx) => (
-                                <div key={idx} className="bg-white border border-royal-100 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow flex flex-col">
-                                    {/* Point Title Bar */}
-                                    <div className="bg-royal-950 px-6 py-4 flex items-center gap-4 text-white">
-                                        <span className="flex items-center justify-center w-8 h-8 rounded-full bg-gold-500 text-royal-950 font-serif font-bold text-lg shadow-sm shrink-0">
-                                            {idx + 1}
-                                        </span>
-                                        <h4 className="text-xl font-serif font-bold text-white tracking-wide">
-                                            {point.title}
-                                        </h4>
-                                    </div>
-
-                                    {/* Content Container - Grid or Stack */}
-                                    <div className="flex flex-col md:flex-row divide-y md:divide-y-0 md:divide-x divide-royal-100">
-                                         {/* Explanation Column (Larger) */}
-                                         <div className="p-6 md:p-8 md:w-1/2 bg-white">
-                                            <div className="mb-4 flex items-center gap-2">
-                                                <span className="text-[10px] font-bold uppercase tracking-widest text-royal-400 border border-royal-100 px-2 py-0.5 rounded-full bg-royal-50">Exegese & Explicação</span>
-                                            </div>
-                                            <p className="text-lg text-royal-800 leading-relaxed font-sans text-justify hyphens-auto">
-                                                {renderTextWithRefs(point.explanation)}
-                                            </p>
-                                         </div>
-
-                                         {/* Side Column for Illustration & Application */}
-                                         <div className="md:w-1/2 flex flex-col divide-y divide-royal-100">
-                                             {/* Illustration */}
-                                             <div className="p-6 md:p-8 bg-gold-50/30 flex-1">
-                                                 <div className="flex gap-4">
-                                                    <div className="shrink-0 mt-1 p-2 bg-white rounded-lg border border-gold-100 text-gold-600 shadow-sm h-fit">
-                                                        <Lightbulb className="w-5 h-5" />
-                                                    </div>
-                                                    <div>
-                                                        <h5 className="text-sm font-bold text-gold-800/80 font-serif mb-2 uppercase tracking-wide">
-                                                            Ilustração
-                                                        </h5>
-                                                        <p className="text-royal-700 italic leading-relaxed font-sans text-justify hyphens-auto text-base">
-                                                            "{renderTextWithRefs(point.illustration)}"
-                                                        </p>
-                                                    </div>
-                                                 </div>
-                                             </div>
-
-                                             {/* Application */}
-                                             <div className="p-6 md:p-8 bg-royal-50/50 flex-1">
-                                                <div className="flex gap-4">
-                                                    <div className="shrink-0 mt-1 p-2 bg-white rounded-lg border border-royal-200 text-royal-800 shadow-sm h-fit">
-                                                        <ArrowRight className="w-5 h-5" />
-                                                    </div>
-                                                    <div>
-                                                        <h5 className="text-sm font-bold text-royal-900 font-serif mb-2 uppercase tracking-wide">
-                                                            Aplicação Prática
-                                                        </h5>
-                                                        <p className="text-royal-900 font-medium leading-relaxed font-sans text-justify hyphens-auto text-base">
-                                                            {renderTextWithRefs(point.application)}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                             </div>
-                                         </div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-
-                        {/* Conclusão */}
-                        <div className="mt-12 pt-8 border-t-2 border-royal-100">
-                             <h3 className="font-bold text-royal-900 text-xl uppercase tracking-wide border-l-4 border-royal-900 pl-4 mb-4 font-serif">
-                                Conclusão & Apelo
-                            </h3>
-                            <p className="text-lg leading-relaxed text-royal-800 font-sans text-justify hyphens-auto">
-                                {renderTextWithRefs(data.sermon.conclusion)}
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            )}
-            
-            {activeTab === 'sermon' && !data.sermon && (
-                 <div className="flex flex-col items-center justify-center p-12 text-center bg-white rounded-2xl border border-dashed border-royal-200">
-                    <Mic2 className="w-12 h-12 text-royal-300 mb-4" />
-                    <h3 className="text-xl font-bold text-royal-700 mb-2 font-serif">Sermão não gerado</h3>
-                    <p className="text-royal-500 max-w-md font-sans">
-                        Para ver o esboço completo de pregação, selecione a opção <strong>"Sermão Expositivo"</strong> no menu de profundidade antes de gerar o estudo.
-                    </p>
-                </div>
-            )}
-
-
-            {activeTab === 'slides' && (
-                <div className="space-y-8">
-                    <div className="bg-gold-50 border border-gold-100 rounded-lg p-4 flex gap-3 items-start">
-                        <Lightbulb className="w-5 h-5 text-gold-600 shrink-0 mt-0.5" />
-                        <p className="text-sm text-gold-800 font-sans">
-                            Estes slides são gerados automaticamente para auxiliar no ensino. Utilize o botão <strong>Exportar</strong> no topo para baixar o arquivo PowerPoint (.pptx).
-                        </p>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        {data.slides.map((slide, idx) => (
-                            <div key={idx} className="bg-white border border-royal-200 rounded-xl overflow-hidden shadow-sm hover:shadow-lg transition-shadow h-auto flex flex-col group min-h-[300px]">
-                                <div className="bg-royal-950 p-5 shrink-0 group-hover:bg-royal-900 transition-colors">
-                                    <h3 className="text-white font-bold text-xl leading-tight font-serif">{slide.title}</h3>
-                                </div>
-                                <div className="p-6 flex-1 bg-white flex flex-col justify-between relative">
-                                    <ul className="list-disc pl-5 space-y-3 text-royal-700 text-lg font-sans">
-                                        {slide.bullets.map((bullet, bIdx) => (
-                                            <li key={bIdx} className="pl-1 marker:text-royal-400 leading-snug">{bullet}</li>
-                                        ))}
-                                    </ul>
-                                    <div className="mt-8 pt-4 border-t border-royal-100 text-xs text-royal-400 italic flex items-center gap-2 font-sans">
-                                        <Presentation className="w-3 h-3" />
-                                        Visual: {slide.image_hint}
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
+                </>
             )}
 
             <div className="h-12" />

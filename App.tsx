@@ -3,7 +3,7 @@ import InputForm from './components/InputForm';
 import StudyViewer from './components/StudyViewer';
 import { StudyRequest, StudyData, HistoryItem, Translation, Depth } from './types';
 import { generateStudy } from './services/geminiService';
-import { AlertCircle, Loader2 } from 'lucide-react';
+import { AlertCircle, Loader2, Moon, Sun } from 'lucide-react';
 
 // Mensagens rotativas para o loading
 const LOADING_MESSAGES = [
@@ -22,8 +22,35 @@ const App: React.FC = () => {
   const [loadingMsg, setLoadingMsg] = useState(LOADING_MESSAGES[0]);
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [isDarkMode, setIsDarkMode] = useState(false);
   
   const hasCheckedUrl = useRef(false);
+
+  // Theme Management
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('exegesis_theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    
+    if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
+        setIsDarkMode(true);
+        document.documentElement.classList.add('dark');
+    } else {
+        setIsDarkMode(false);
+        document.documentElement.classList.remove('dark');
+    }
+  }, []);
+
+  const toggleTheme = () => {
+      const newMode = !isDarkMode;
+      setIsDarkMode(newMode);
+      localStorage.setItem('exegesis_theme', newMode ? 'dark' : 'light');
+      
+      if (newMode) {
+          document.documentElement.classList.add('dark');
+      } else {
+          document.documentElement.classList.remove('dark');
+      }
+  };
 
   // Load history
   useEffect(() => {
@@ -66,7 +93,8 @@ const App: React.FC = () => {
       handleCreateStudy({
         passage: decodeURIComponent(ref),
         translation: trans || 'NVI',
-        depth: depth || 'detalhado'
+        depth: depth || 'detalhado',
+        mode: 'passage'
       });
     }
   }, []);
@@ -105,23 +133,32 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="h-screen w-full bg-gradient-to-br from-bible-50 to-white text-royal-neutral font-sans relative">
-      {/* Assinatura Celpf Fixa */}
-      <div className="fixed bottom-2 right-4 z-[100] pointer-events-none select-none opacity-40 mix-blend-multiply">
-        <span className="font-serif italic text-[10px] text-royal-400 tracking-widest">Celpf</span>
+    <div className="h-screen w-full bg-gradient-to-br from-bible-50 to-white dark:from-night-950 dark:to-night-900 text-royal-neutral dark:text-night-200 font-sans relative transition-colors duration-300">
+      {/* Theme Toggle Button - Moved to Bottom Right */}
+      <button 
+        onClick={toggleTheme}
+        className="fixed bottom-6 right-6 z-[100] p-3 rounded-full bg-white/90 dark:bg-night-800/90 backdrop-blur shadow-lg border border-royal-100 dark:border-night-700 text-royal-600 dark:text-gold-400 hover:scale-105 transition-all hover:shadow-xl"
+        title={isDarkMode ? "Modo Claro" : "Modo Escuro"}
+      >
+          {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+      </button>
+
+      {/* Assinatura Celpf Fixa - Moved to Bottom Left to prevent overlap */}
+      <div className="fixed bottom-2 left-4 z-[90] pointer-events-none select-none opacity-40 mix-blend-multiply dark:mix-blend-overlay">
+        <span className="font-serif italic text-[10px] text-royal-400 dark:text-night-400 tracking-widest">Celpf</span>
       </div>
 
       {/* Loading Overlay Global (mais elegante) */}
       {isLoading && (
-          <div className="fixed inset-0 z-50 bg-royal-950/20 backdrop-blur-sm flex items-center justify-center p-4">
-              <div className="bg-white rounded-2xl p-8 shadow-2xl max-w-sm w-full text-center border border-royal-100 animate-fadeIn shadow-soft">
+          <div className="fixed inset-0 z-50 bg-royal-950/20 dark:bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+              <div className="bg-white dark:bg-night-800 rounded-2xl p-8 shadow-2xl max-w-sm w-full text-center border border-royal-100 dark:border-night-700 animate-fadeIn shadow-soft">
                   <div className="relative w-16 h-16 mx-auto mb-6">
-                      <div className="absolute inset-0 border-4 border-royal-50 rounded-full"></div>
-                      <div className="absolute inset-0 border-4 border-royal-800 rounded-full border-t-transparent animate-spin"></div>
-                      <Loader2 className="absolute inset-0 m-auto w-6 h-6 text-royal-800 animate-pulse" />
+                      <div className="absolute inset-0 border-4 border-royal-50 dark:border-night-700 rounded-full"></div>
+                      <div className="absolute inset-0 border-4 border-royal-800 dark:border-gold-500 rounded-full border-t-transparent animate-spin"></div>
+                      <Loader2 className="absolute inset-0 m-auto w-6 h-6 text-royal-800 dark:text-gold-500 animate-pulse" />
                   </div>
-                  <h3 className="text-lg font-serif font-bold text-royal-950 mb-2">Gerando Exegese</h3>
-                  <p className="text-royal-500 font-sans text-sm animate-pulse">{loadingMsg}</p>
+                  <h3 className="text-lg font-serif font-bold text-royal-950 dark:text-night-100 mb-2">Gerando Exegese</h3>
+                  <p className="text-royal-500 dark:text-night-400 font-sans text-sm animate-pulse">{loadingMsg}</p>
               </div>
           </div>
       )}
@@ -142,7 +179,7 @@ const App: React.FC = () => {
                 />
                 
                 {error && (
-                    <div className="max-w-2xl mx-auto mt-6 p-4 bg-red-50 text-red-700 rounded-lg border border-red-200 flex items-start gap-3 shadow-sm animate-fadeIn">
+                    <div className="max-w-2xl mx-auto mt-6 p-4 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded-lg border border-red-200 dark:border-red-800 flex items-start gap-3 shadow-sm animate-fadeIn">
                         <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
                         <p>{error}</p>
                     </div>
@@ -150,7 +187,7 @@ const App: React.FC = () => {
             </div>
           </main>
           
-          <footer className="py-8 text-center text-royal-400 text-sm">
+          <footer className="py-8 text-center text-royal-400 dark:text-night-400 text-sm">
             <p>&copy; {new Date().getFullYear()} Exegesis AI. Powered by Gemini.</p>
           </footer>
         </div>

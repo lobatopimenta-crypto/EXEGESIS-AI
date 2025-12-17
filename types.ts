@@ -1,10 +1,12 @@
-export type Translation = 'NVI' | 'ARC' | 'ACF' | 'KJA' | 'NVT' | 'KJV' | 'NIV' | 'ESV';
+export type Translation = 'NVI' | 'ARC' | 'ACF' | 'KJA' | 'NVT' | 'NAA' | 'KJV' | 'NIV' | 'ESV';
 export type Depth = 'rapido' | 'detalhado' | 'academico' | 'sermao';
+export type StudyMode = 'passage' | 'book';
 
 export interface StudyRequest {
-  passage: string;
+  passage: string; // Used for book name in 'book' mode
   translation: Translation;
   depth: Depth;
+  mode: StudyMode;
 }
 
 export interface HistoryItem extends StudyRequest {
@@ -65,18 +67,103 @@ export interface SermonContent {
   conclusion: string;
 }
 
+// Interface for the 18-point Book Introduction
+export interface BookIntroContent {
+  general_id: {
+    name: string;
+    original_name: string;
+    canon_position: string;
+  };
+  authorship: {
+    author_traditional: string;
+    internal_evidence: string;
+    external_evidence: string;
+    academic_debate: string;
+  };
+  dating: {
+    approximate_date: string;
+    historical_context: string;
+    contemporary_events: string;
+    arguments: string;
+  };
+  recipients: {
+    target_audience: string;
+    location: string;
+    social_conditions: string;
+    spiritual_situation: string;
+  };
+  context_cultural: {
+    political_panorama: string;
+    culture_customs: string;
+    economic_social: string;
+    neighbors_relation: string;
+  };
+  context_canonical: {
+    relation_prev_next: string;
+    continuity_rupture: string;
+    promise_fulfillment: string;
+    narrative_preparation: string;
+  };
+  purpose: {
+    main_objective: string;
+    problems_addressed: string;
+    intent: string;
+  };
+  themes: string[];
+  central_message: string;
+  structure: {
+    sections: string[];
+    progression: string;
+    genre: string;
+  };
+  style: {
+    literary_features: string;
+    keywords: string[];
+    techniques: string;
+  };
+  characters: {
+    name: string;
+    role: string;
+  }[];
+  theology: {
+    doctrines: string[];
+    contributions: string;
+    controversies: string;
+  };
+  key_passages: {
+    reference: string;
+    description: string;
+  }[];
+  redemptive_plan: {
+    christ_pointer: string;
+    salvation_relation: string;
+  };
+  application: {
+    principles: string[];
+    church_relevance: string;
+    pastoral_implications: string;
+  };
+  interpretation_challenges: {
+    difficult_texts: string[];
+    hermeneutic_problems: string;
+  };
+  conclusion: string;
+}
+
 export interface StudyData {
+  type: StudyMode; // 'passage' or 'book'
   meta: {
     reference: string;
     translation: Translation;
     generated_at: string;
   };
-  summary: {
+  // Existing fields for Passage Study
+  summary?: {
     executive: string;
-    key_quote: string; // New field for the cover page
+    key_quote: string;
     preaching_points: string[];
   };
-  content: {
+  content?: {
     text_base: string;
     intro_definition: string;
     context_literary: string;
@@ -90,6 +177,9 @@ export interface StudyData {
     study_questions: string[];
     bibliography: BibliographicEntry[];
   };
-  sermon?: SermonContent; // Optional, populated fully when depth is 'sermao'
-  slides: SlideContent[];
+  sermon?: SermonContent;
+  slides?: SlideContent[];
+  
+  // New field for Book Introduction
+  bookIntro?: BookIntroContent;
 }
